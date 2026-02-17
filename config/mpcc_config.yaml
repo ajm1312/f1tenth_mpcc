@@ -1,0 +1,12 @@
+# MPCC Horizon
+mpcc_node:
+  ros__parameters:
+
+    # MPCC parameters
+    horizon: 8
+    time_step: 0.1
+    v_min: 2.0
+    v_max: 4.5
+
+    #F1Tenth Parameters
+    
