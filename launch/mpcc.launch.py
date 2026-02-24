@@ -17,8 +17,8 @@ def generate_launch_description():
         package='mpcc',
         executable='mpcc_node',
         name='mpcc_node',
-        output='screen', # Optional: see node output in terminal
-        parameters=[config] # Optional: load parameters
+        output='screen', 
+        parameters=[config] 
     )
 
     return LaunchDescription([

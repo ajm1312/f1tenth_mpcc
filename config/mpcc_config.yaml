@@ -2,11 +2,25 @@
 mpcc_node:
   ros__parameters:
 
+    # Map Parameters
+    map_name: "Oschersleben"
+
     # MPCC parameters
     horizon: 8
     time_step: 0.1
     v_min: 2.0
     v_max: 4.5
 
-    #F1Tenth Parameters
+    # Weights
+    q_c: 0.0      # Contour weight
+    q_l: 0.0      # Lag weight
+    q_theta: 0.0  # Path parameter weight
+
+    # F1Tenth Parameters
+    length: 0.50
+    width: 0.27
+    wheelbase: 0.3240
+    max_speed: 6.0
+    min_speed: 0.0
+    max_steer: 0.5236
     
