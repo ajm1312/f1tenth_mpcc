@@ -1,61 +1,13 @@
 # import trajectory_planning_helpers as tph
-import sys
 import numpy as np
 from pathlib import Path
 import trajectory_planning_helpers as tph
 from scipy.interpolate import splprep, splev
 import matplotlib.pyplot as plt
 from ament_index_python.packages import get_package_share_directory
+import casadi as ca
 
-def init_track_interpolants(center_line, exclusion_width):
-    widths = np.row_stack((center_line.widths, center_line.widths[1:int(center_line.widths.shape[0] / 2), :]))
-    path = np.row_stack((center_line.path, center_line.path[1:int(center_line.path.shape[0] / 2), :]))
-    extended_track = TrackLine(path)
-    extended_track.init_path()
-    extended_track.init_track()
-
-    center_interpolant = LineInterpolant(extended_track.path, extended_track.s_path, extended_track.psi + np.pi / 2) # add pi/2 to account for coord frame change
-
-    left_path = extended_track.path - extended_track.nvecs * np.clip((widths[:, 0][:, None]  - exclusion_width), 0, np.inf)
-    left_interpolant = LineInterpolant(left_path, extended_track.s_path)
-    right_path = extended_track.path + extended_track.nvecs * np.clip((widths[:, 1][:, None] - exclusion_width), 0, np.inf)
-    right_interpolant = LineInterpolant(right_path, extended_track.s_path)
-
-    return center_interpolant, left_interpolant, right_interpolant
-
-
-class LineInterpolant:
-    def __init__(self, path, s_path, angles=None):
-        self.lut_x = ca.interpolant('lut_x', 'bspline', [s_path], path[:, 0])
-        self.lut_y = ca.interpolant('lut_y', 'bspline', [s_path], path[:, 1])
-        if angles is not None:
-            self.lut_angle = ca.interpolant('lut_angle', 'bspline', [s_path], angles)
-
-    def get_point(self, s):
-        return np.array([self.lut_x(s).full()[0, 0], self.lut_y(s).full()[0, 0]])
-
-
-# class Track:
-class Track():
-    def __init__(self, path):
-        self.path = path
-
-    def init_path(self):
-        self.diffs = self.track[:, 0] - self.track[:, 1]
-
-        #make spline curve fit
-        self.tck, self.u = splprep(x = [self.track[:, 0], self.track[:, 1]], k = 3, s=0, per=True)
-
-        # progress variable
-
-    # def get_point(self, x, y):
-        
-        # 
-
-
-
-
-class Centerline(Track):
+class Centerline():
 
     # Load the centerline
     def __init__(self, map_name):
@@ -63,51 +15,76 @@ class Centerline(Track):
         # traj_path = dir.parent / "racelines"
         share_dir = get_package_share_directory('mpcc') 
         traj_path = Path(share_dir) / "racelines"
-
-        self.map_name = map_name
-        self.load_track(self.map_name, traj_path)
-        self.init_path()
-
-
-    def load_track(self, map_name, directory):
-        print("\n\n\n\n\n")
-        print(map_name)
-        filename = str(directory) + "/" + map_name + "_centerline.csv"
+        filename = str(traj_path) + "/" + map_name + "_centerline.csv"
 
         self.track = np.loadtxt(filename, delimiter=",", skiprows=1)
         self.path_x = self.track[:, 0]
         self.path_y = self.track[:, 1]
-        self.path = self.track[:, 0:2]
-        self.widths = self.track[:, 2:]
-        print(self.path_x)
-        self.width = self.track[:, 2:]
+        self.width_r = self.track[:, 2]
+        self.width_l = self.track[:, 3]
 
+        # Interpolant definitions
+        self.center_interpolant = None
+        self.right_interpolant = None
+        self.left_interpolant = None
 
+        self.lut_phi = None
+        self.lut_x = None
+        self.lut_y = None
 
-if __name__ == '__main__':
-    test = Centerline("Oschersleben")
-    x_track = test.path_x[:]
-    y_track = test.path_y[:]
+        self.init_interpolant()
 
-    u_new = np.linspace(0, 1, 2000)
-    x_spline, y_spline = splev(u_new, test.tck)
+    def init_interpolant(self):
+        X_coords = self.path_x
+        Y_coords = self.path_y
 
-    # Debug plotting
-    plt.figure(figsize=(12, 8))
-    
-    # Plot original points (red dots)
-    plt.plot(x_track, y_track, 'ro', markersize=3, label='Centerline')
-    
-    # Plot the spline fit (smooth blue line)
-    plt.plot(x_spline, y_spline, 'b-', linewidth=2, label='Spline Fit')
+        dx = np.gradient(X_coords)
+        dy = np.gradient(Y_coords)
 
-    # Formatting the plot
-    plt.title(f'Track Centerline and Spline Fit: {test.map_name}')
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.legend()
-    plt.axis('equal') # Prevents distortion of the track shape
-    plt.grid(True)
-    
-    # Render the visualization
-    plt.show()
+        heading_angle = np.unwrap(np.arctan2(dy, dx))
+
+        ds = np.sqrt(dx**2 + dy**2)
+
+        s_grid = np.cumsum(ds)
+        s_grid = s_grid - s_grid[0]
+        self.s_grid = s_grid
+
+        self.s_max = s_grid[-1]
+
+        # print(s_grid)
+
+        # heading_angle = np.append(heading_angle, heading_angle[-1])
+
+        self.lut_x = ca.interpolant('lut_x', 'bspline', [s_grid], X_coords.flatten())
+        self.lut_y = ca.interpolant('lut_y', 'bspline', [s_grid], Y_coords.flatten())
+        self.lut_phi = ca.interpolant('lut_angle', 'bspline', [s_grid], heading_angle.flatten())
+
+        # Calculate border interpolants
+        x_left = X_coords - self.width_l * np.sin(heading_angle)
+        y_left = Y_coords + self.width_l * np.cos(heading_angle)
+
+        x_right = X_coords + self.width_r * np.sin(heading_angle)
+        y_right = Y_coords - self.width_r * np.cos(heading_angle)
+
+        self.lut_x_left = ca.interpolant('lut_x_l', 'bspline', [s_grid], x_left.flatten())
+        self.lut_y_left = ca.interpolant('lut_y_l', 'bspline', [s_grid], y_left.flatten())
+
+        self.lut_x_right = ca.interpolant('lut_x_r', 'bspline', [s_grid], x_right.flatten())
+        self.lut_y_right = ca.interpolant('lut_y_r', 'bspline', [s_grid], y_right.flatten())
+
+    def get_left_point(self, s):
+        return np.array([self.lut_x_left(s).full()[0, 0], 
+                        self.lut_y_left(s).full()[0, 0]])
+
+    def get_right_point(self, s):
+        return np.array([self.lut_x_right(s).full()[0, 0], 
+                        self.lut_y_right(s).full()[0, 0]])
+
+    def calculate_progress(self, x, y):
+
+        distances_sq = (self.path_x - x)**2 + (self.path_y - y)**2
+
+        point = np.argmin(distances_sq)
+        # print("s_grid:" + str(self.s_grid))
+
+        return self.s_grid[point]

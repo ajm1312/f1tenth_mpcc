@@ -6,21 +6,38 @@ mpcc_node:
     map_name: "Oschersleben"
 
     # MPCC parameters
-    horizon: 8
+    horizon: 20
     time_step: 0.1
     v_min: 2.0
-    v_max: 4.5
+    v_max: 10.0
+
+    #MPCC Variable Constraints
+    min_pos: -100
+    max_pos: 100
+    min_heading: -20
+    max_heading: 20
+    min_steering: -0.4
+    max_steering: 0.4
+    min_speed: 2.0
+    max_speed: 10.0
+    max_track_len: 300
+    min_progress: 1
+    max_progress: 12
+    # TODO: update force values
+    max_force: 20
+    max_deceleration: 5.0
 
     # Weights
-    q_c: 0.0      # Contour weight
-    q_l: 0.0      # Lag weight
-    q_theta: 0.0  # Path parameter weight
+    weight_contour: 10      # Contour weight
+    weight_lag: 15      # Lag weight
+    weight_theta: 0.001  # Path parameter weight
+    weight_steering: 100
+    weight_acceleration: 0.00001
+    weight_steering_acceleration: 0.001
 
     # F1Tenth Parameters
     length: 0.50
     width: 0.27
     wheelbase: 0.3240
-    max_speed: 6.0
-    min_speed: 0.0
-    max_steer: 0.5236
+    vehicle_mass: 3.47
     
